@@ -1,0 +1,8 @@
+__pycache__/
+.venv
+app.py
+temp_uploads
+.env
+analytics.duckdb
+analytics.duckdb.wal
+graph
