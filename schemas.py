@@ -91,7 +91,7 @@ class ChatRequest(BaseModel):
     user_id: str
     db_types: list[str] = []
     query: str
-    file_path: str | None = None
+    file_paths: list[str] = []
 
 
 class ChatResponse(BaseModel):

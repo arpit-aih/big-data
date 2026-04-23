@@ -274,7 +274,6 @@ async def analyze_quality(request: DataQualityRequest):
         quality_cb = OpenAICallbackHandler()
         report_cb = OpenAICallbackHandler()
         
-        
         with get_openai_callback() as cb:
             quality_issues = analyze_data_quality(df)
             quality_cb = cb
@@ -287,10 +286,8 @@ async def analyze_quality(request: DataQualityRequest):
         
         user["quality_report"] = quality_report
         
-        
         quality_token_usage = calculate_token_cost(quality_cb)
         report_token_usage = calculate_token_cost(report_cb)
-        
         
         total_token_usage = {
             "total_tokens": quality_token_usage["total_tokens"] + report_token_usage["total_tokens"],
@@ -331,7 +328,6 @@ async def clean_data_endpoint(request: CleaningRequest):
     df = user["original_data"]
     
     try:
-        
         options = request.options.dict()
         
         if options["missing_strategy"] == "constant" and options["constant_value"] is not None:
@@ -719,7 +715,7 @@ def connect_postgres(req: PostgresConnectRequest):
 
         session["schemas"]["postgres"] = extract_sql_schema(sql_db)
 
-        return {"message": f"PostgreSQL connected for session {req.user_id}"}
+        return {"message": "PostgreSQL connected"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -744,7 +740,7 @@ def connect_mysql(req: MySQLConnectRequest):
         session["agents"]["mysql"] = agent
         session["schemas"]["mysql"] = extract_sql_schema(sql_db) 
 
-        return {"message": f"MySQL connected for session {req.user_id}"}
+        return {"message": "MySQL connected"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -766,7 +762,7 @@ def connect_mongodb(req: MongoConnectRequest):
 
         session["schemas"]["mongodb"] = extract_mongo_schema(db)
 
-        return {"message": f"MongoDB connected for session {req.user_id}"}
+        return {"message": "MongoDB connected"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -792,8 +788,6 @@ def extract_chart_data_from_reply(reply_text: str) -> pd.DataFrame:
     - d001: 79,879.18
     """
     try:
-        import re
-        # Match lines like "- LABEL: VALUE" or "LABEL: VALUE"
         pattern = r'-\s*([^–—\-\n]+?)\s*[–—\-:]+\s*([\d,\.]+)'
         matches = re.findall(pattern, reply_text)
 
@@ -895,13 +889,18 @@ def chat(req: ChatRequest):
         session = get_session(req.user_id)
 
         has_dbs  = bool(req.db_types)
-        has_file = bool(req.file_path)
+        has_files = bool(req.file_paths)
 
-        if not has_dbs and not has_file:
-            raise HTTPException(status_code=400, detail="Provide at least one db_type or file_path")
+        if not has_dbs and not has_files:
+            raise HTTPException(status_code=400, detail="Provide at least one db_type or file_paths")
 
-        if has_file and not os.path.exists(req.file_path):
-            raise HTTPException(status_code=400, detail=f"File not found: {req.file_path}")
+        if has_files:
+            invalid_files = [fp for fp in req.file_paths if not os.path.exists(fp)]
+            if invalid_files:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Files not found: {invalid_files}"
+        )
 
         all_data     = []
         final_answer = None
@@ -925,15 +924,23 @@ def chat(req: ChatRequest):
                 schema = session.get("schemas", {}).get(db, {})
                 agents_to_run.append((db, agent, schema))
 
-        if has_file:
-           
-            file_tools = create_file_tools(req.file_path)
-            file_agent = create_agent(llm, file_tools) 
-            file_schema = {
-                "source": "file",
-                "file": os.path.basename(req.file_path)
-            }
-            agents_to_run.append((os.path.basename(req.file_path), file_agent, file_schema))
+        if has_files:
+            for file_path in req.file_paths:
+                try:
+                    file_tools = create_file_tools(file_path)
+                    file_agent = create_agent(llm, file_tools)
+
+                    file_schema = {
+                        "source": "file",
+                        "file": os.path.basename(file_path)
+                    }
+
+                    agents_to_run.append(
+                        (os.path.basename(file_path), file_agent, file_schema)
+                    )
+
+                except Exception as e:
+                    print(f"Error creating agent for {file_path}: {e}")
 
         for source_name, agent, schema in agents_to_run:
             prompt = build_prompt(req.query, schema)
