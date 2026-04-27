@@ -38,7 +38,8 @@ def get_llm() -> Optional[AzureOpenAI]:
             api_version=api_version,
             deployment_name=engine,
             azure_ad_token=credential.get_token("https://cognitiveservices.azure.com/.default").token,
-            max_tokens=None
+            max_tokens=None,
+            temperature=0,
         )
         return llm
     except Exception as e:
