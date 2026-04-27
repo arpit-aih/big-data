@@ -6,3 +6,5 @@ temp_uploads
 analytics.duckdb
 analytics.duckdb.wal
 graph
+cache
+pandasai.log
