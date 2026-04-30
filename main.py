@@ -1,5 +1,4 @@
 import pandas as pd
-from pydantic import Field
 from datetime import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -15,7 +14,7 @@ from langchain_community.utilities import SQLDatabase
 from fastapi import FastAPI, HTTPException, UploadFile, Form, File
 from langchain_community.callbacks.manager import get_openai_callback, OpenAICallbackHandler
 
-from visualization import DuckDBManager, generate_chart, build_prompt
+from visualization import DuckDBManager, build_prompt, generate_chart_with_summary
 from tools import create_sql_tools, create_mongo_tools
 from text_data_analysis import load_data
 from data_quality_app import clean_data, create_zip_archive, export_data, analyze_data_quality, generate_quality_report
@@ -695,7 +694,7 @@ async def process_all(request: ProcessAllRequest):
 
 
 @app.post("/connect/postgres")
-def connect_postgres(req: PostgresConnectRequest):
+async def connect_postgres(req: PostgresConnectRequest):
     try:
         session = get_session(req.user_id)
         password = quote_plus(req.password)
@@ -721,7 +720,7 @@ def connect_postgres(req: PostgresConnectRequest):
 
 
 @app.post("/connect/mysql")
-def connect_mysql(req: MySQLConnectRequest):
+async def connect_mysql(req: MySQLConnectRequest):
     try:
         session = get_session(req.user_id)
         password = quote_plus(req.password)
@@ -747,7 +746,7 @@ def connect_mysql(req: MySQLConnectRequest):
 
 
 @app.post("/connect/mongodb")
-def connect_mongodb(req: MongoConnectRequest):
+async def connect_mongodb(req: MongoConnectRequest):
     try:
         session = get_session(req.user_id)
         client = MongoClient(req.uri)
@@ -806,85 +805,8 @@ def extract_chart_data_from_reply(reply_text: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# @app.post("/chat")
-# def chat(req: ChatRequest):
-#     try:
-#         session = get_session(req.user_id)
-
-#         agent = session.get("agents", {}).get(req.db_type)
-#         if not agent:
-#             raise HTTPException(
-#                 status_code=400,
-#                 detail=f"{req.db_type} not connected in this session"
-#             )
-
-#         schema = session.get("schemas", {}).get(req.db_type, {})
-
-#         prompt = build_prompt(req.query, schema)
-
-#         response = agent.invoke({
-#             "messages": [HumanMessage(content=prompt)]
-#         })
-
-#         raw_output = response["messages"][-1].content
-
-#         cost = calculate_cost(response)
-
-#         try:
-#             parsed = json.loads(raw_output)
-#         except Exception:
-#             return {
-#                 "query": req.query,
-#                 "reply": raw_output,
-#                 "chart_path": None,
-#                 "cost": cost
-#             }
-
-#         table_name = parsed.get("table_name")
-#         chart_path = None
-#         df = None
-
-#         if table_name:
-#             try:
-#                 df = duckdb_manager.get_dataframe(table_name)
-#             except Exception:
-#                 df = None
-
-#         if parsed.get("chart_type") != "none":
-#             if df is None or df.empty or len(df) > 50:
-#                 df = extract_chart_data_from_reply(parsed.get("answer", ""))
-
-#         if parsed.get("chart_type") != "none" and df is not None and not df.empty:
-#             try:
-#                 chart_path = generate_chart(
-#                     df.to_dict(orient="records"),
-#                     parsed.get("chart_type"),
-#                     req.user_id
-#                 )
-#             except Exception:
-#                 chart_path = None
-
-#         if table_name:
-#             try:
-#                 duckdb_manager.drop_table(table_name)
-#             except Exception:
-#                 pass
-
-#         return {
-#             "query": req.query,
-#             "reply": parsed.get("answer"),
-#             "chart_path": chart_path,
-#             "cost": cost
-#         }
-
-#     except HTTPException:
-#         raise
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/chat")
-def chat(req: ChatRequest):
+async def chat(req: ChatRequest):
     try:
         session = get_session(req.user_id)
 
@@ -1003,9 +925,11 @@ def chat(req: ChatRequest):
             else final_answer or "No data found."
         )
 
-        chart_path = None
+        chart_path, summary = None, None
+        gemini_cost = 0.0
+
         if chart_type != "none" and not df.empty:
-            chart_path = generate_chart(
+            chart_path, summary, gemini_cost = await generate_chart_with_summary(
                 df.to_dict(orient="records"),
                 chart_type,
                 req.user_id,
@@ -1017,8 +941,11 @@ def chat(req: ChatRequest):
             "user_id": req.user_id,
             "query": req.query,
             "answer": answer,
-            "filepath": chart_path
+            "filepath": chart_path,
+            "summary": summary
         }
+
+        total_cost += gemini_cost
 
         try:
             chat_collection.insert_one(chat_record)
@@ -1029,6 +956,7 @@ def chat(req: ChatRequest):
             "query":      req.query,
             "answer":     answer,
             "chart_path": chart_path,
+            "summary":    summary,
             "sources":    list({row.get("source") for row in all_data if row.get("source")}),
             "cost": {
                 "input_cost_usd":  round(total_input_cost,  6),

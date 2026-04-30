@@ -609,10 +609,8 @@ def process_query_with_pandasai_datalake(query, dataframes=None, file_names=None
     if dataframes is not None:
         data_collection = dataframes
     
-    
     try:
         print("Analyzing multiple datasets and generating response...")
-        
         
         if smart_datalake is None:
             smart_datalake = initialize_pandasai_datalake(data_collection, user_id)
@@ -621,17 +619,13 @@ def process_query_with_pandasai_datalake(query, dataframes=None, file_names=None
             print("Failed to initialize PandasAI SmartDatalake. Please check your configuration.")
             return None
         
-        
         user_charts_dir = os.path.join("GRAPH", user_id)
         os.makedirs(user_charts_dir, exist_ok=True)
         
-        
         before_charts = set(os.listdir(user_charts_dir))
-        
         
         chart_filename = f"{uuid.uuid4()}.html"
         chart_save_path = os.path.join(user_charts_dir, chart_filename).replace("\\", "/")
-        
         
         column_focus = ""
         if selected_columns_map and isinstance(selected_columns_map, dict) and len(selected_columns_map) > 0:
@@ -649,7 +643,6 @@ def process_query_with_pandasai_datalake(query, dataframes=None, file_names=None
             
             if column_instructions:
                 column_focus = "Column focus instructions:\n" + "\n".join(column_instructions) + "\nIgnore all other columns in your analysis. "
-        
         
         viz_instruction = (
             f"If creating a visualization, use Plotly and save it strictly with:\n"
@@ -673,15 +666,12 @@ def process_query_with_pandasai_datalake(query, dataframes=None, file_names=None
         new_charts = list(after_charts - before_charts)
 
         new_charts = [f for f in new_charts if f.endswith(".html")]
-
         
         text_response, visualization_text = _extract_text_response(smart_datalake, response)
         cost_analysis = _calculate_token_usage(enhanced_query, text_response, df=data_collection[0] if data_collection else None)
-
         
         if new_charts:
             new_charts = _ensure_html_charts(user_charts_dir, new_charts, text_response)
-
         
         result = {
             "success": True,
@@ -694,7 +684,6 @@ def process_query_with_pandasai_datalake(query, dataframes=None, file_names=None
             "chart_files": new_charts,
             "visualization_paths": [os.path.join("GRAPH", user_id, chart).replace("\\", "/") for chart in new_charts]
         }
-
         
         if query not in [item['query'] for item in query_history]:
             query_history.append({
@@ -706,7 +695,6 @@ def process_query_with_pandasai_datalake(query, dataframes=None, file_names=None
             })
 
         current_response = result
-
         
         print(f"\nQuery: {query}")
         if new_charts:

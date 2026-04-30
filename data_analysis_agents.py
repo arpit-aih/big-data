@@ -42,6 +42,7 @@ class Task(BaseTask):
                 pass
         
         return self._generate_text(system_persona=system_persona, prompt=prompt)
+        
 from dotenv import load_dotenv
 from azure.identity import ClientSecretCredential
 
@@ -307,7 +308,6 @@ def create_data_summary(df):
         "temporal_columns": df.select_dtypes(include=['datetime']).columns.tolist()
     }
     
-    
     if summary["numeric_columns"]:
         summary["numeric_stats"] = df[summary["numeric_columns"]].describe().to_dict()
     
@@ -411,7 +411,6 @@ def generate_technical_details(df):
     
     data_summary = create_data_summary(df)
     
-    
     system_content = """
     You are 'Technical Data Scientist', a specialized AI for generating detailed technical data analysis.
     Your task is to analyze the provided dataset summary and create a comprehensive technical report
@@ -426,7 +425,6 @@ def generate_technical_details(df):
 
     Use the generate_technical_details function to structure your response.
     """
-
     
     prompt = f"""
     Please provide a technical data analysis report using the generate_technical_details schema.
@@ -443,7 +441,6 @@ def generate_technical_details(df):
 
     Include appropriate statistical terminology and technical details that would be relevant for a data scientist.
     """
-
     
     agent = Agent(role="technical data scientist", prompt_persona=prompt)
     task = Task(
@@ -503,7 +500,6 @@ def generate_comprehensive_report(df):
 
     Use the generate_comprehensive_report function to structure your response.
     """
-
     
     prompt = f"""
     Please provide a comprehensive analysis report using the generate_comprehensive_report schema.
